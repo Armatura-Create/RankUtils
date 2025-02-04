@@ -3,6 +3,7 @@ using CounterStrikeSharp.API.Core.Attributes;
 using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Modules.Commands;
 using IksAdminApi;
+using Microsoft.Extensions.Logging;
 using RanksApi;
 
 namespace ClearRanksWithBan;
@@ -15,7 +16,7 @@ public class ClearRanksWithBan : AdminModule
     public override string ModuleAuthor => "Armatura";
 
     private IRanksApi? _api;
-    private DBService? _dbService;
+    private DbService? _dbService;
 
     private bool isReady = false;
 
@@ -24,15 +25,17 @@ public class ClearRanksWithBan : AdminModule
         _api = IRanksApi.Capability.Get();
         if (_api == null)
         {
-            AdminUtils.LogError("[Ranks] RanksApi не установлен или не доступен.");
+            Logger.LogError("[Ranks] RanksApi не установлен или не доступен.");
             return;
         }
 
-        _dbService = new DBService(_api, Api);
+        _dbService = new DbService(this, _api, Api);
 
         isReady = true;
+        
+        _dbService?.EnsurePrimaryKeyExists();
 
-        AdminUtils.LogDebug("[ClearRanksWithBan] Ready");
+        Logger.LogInformation("[ClearRanksWithBan] Ready");
         Api.OnBanPost += OnBanPlayerPost;
     }
 

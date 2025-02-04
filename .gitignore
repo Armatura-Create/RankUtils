@@ -15,6 +15,7 @@
 
 ### VisualStudioCode ###
 .vscode/
+.idea/
 .vs/
 *.code-workspace
 
