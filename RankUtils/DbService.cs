@@ -1,13 +1,11 @@
-using System.Text.RegularExpressions;
 using Dapper;
 using IksAdminApi;
-using Microsoft.Extensions.Logging;
 using MySqlConnector;
 using RanksApi;
 
-namespace ClearRanksWithBan;
+namespace RankUtils;
 
-public class DbService(RankUtils plugin, IRanksApi ranksApi, IIksAdminApi iksAdminApi)
+public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi)
 {
     public async Task EnsurePrimaryKeyExists()
     {
@@ -72,11 +70,11 @@ public class DbService(RankUtils plugin, IRanksApi ranksApi, IIksAdminApi iksAdm
                 ";
 
                 await connection.ExecuteAsync(addPkQuery);
-                Utils.Log("[ClearRanksWithBan] Primary key added successfully.", Utils.TypeLog.DEBUG);
+                Utils.Log("[RankUtils] Primary key added successfully.", Utils.TypeLog.DEBUG);
             }
             else
             {
-                Utils.Log("[ClearRanksWithBan] Primary key already exists. SUCCESS", Utils.TypeLog.DEBUG);
+                Utils.Log("[RankUtils] Primary key already exists. SUCCESS", Utils.TypeLog.DEBUG);
             }
         }
         catch (Exception ex)
@@ -106,7 +104,7 @@ public class DbService(RankUtils plugin, IRanksApi ranksApi, IIksAdminApi iksAdm
                     `value` = @Experience,
                     `rank` = @Level";
 
-            Utils.Log($"[ClearRanksWithBan] Clearing for {steamId}", Utils.TypeLog.DEBUG);
+            Utils.Log($"[RankUtils] Clearing for {steamId}", Utils.TypeLog.DEBUG);
             await connection.ExecuteAsync(updateQuery, new
             {
                 SteamId = Utils.SteamId64ToSteamId(steamId),

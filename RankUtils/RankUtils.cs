@@ -6,7 +6,7 @@ using IksAdminApi;
 using Microsoft.Extensions.Logging;
 using RanksApi;
 
-namespace ClearRanksWithBan;
+namespace RankUtils;
 
 [MinimumApiVersion(305)]
 public class RankUtils : AdminModule
@@ -29,7 +29,7 @@ public class RankUtils : AdminModule
             return;
         }
 
-        _dbService = new DbService(this, _api, Api);
+        _dbService = new DbService(_api, Api);
 
         _isReady = true;
         
@@ -43,11 +43,10 @@ public class RankUtils : AdminModule
     {
         if (_api == null || string.IsNullOrEmpty(ban.SteamId)) return HookResult.Continue;
 
-        AdminUtils.LogDebug("[ClearRanksWithBan] BAN POST FROM MODULE:");
-        AdminUtils.LogDebug($"[ClearRanksWithBan] Admin name: {ban.Admin}");
-        AdminUtils.LogDebug($"[ClearRanksWithBan] Player name: {ban.Name}");
-        AdminUtils.LogDebug($"[ClearRanksWithBan] Reason: {ban.Reason}");
-        AdminUtils.LogDebug("[ClearRanksWithBan] Try Clearing rank exp...");
+        AdminUtils.LogDebug("[RankUtils] POST BAN MODULE:");
+        AdminUtils.LogDebug($"[RankUtils] {ban.Admin}");
+        AdminUtils.LogDebug($"[RankUtils] {ban.Name}");
+        AdminUtils.LogDebug($"[RankUtils] {ban.Reason}");
 
         try
         {
@@ -79,7 +78,7 @@ public class RankUtils : AdminModule
     {
         if (info.ArgCount < 1) return;
         
-        var arg = info.GetArg(0);
+        var arg = info.GetArg(1);
         switch (arg)
         {
             case "all":

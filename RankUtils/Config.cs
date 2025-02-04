@@ -1,4 +1,4 @@
-namespace ClearRanksWithBan;
+namespace RankUtils;
 
 public class Config
 {
