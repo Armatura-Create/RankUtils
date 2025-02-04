@@ -37,7 +37,7 @@ css_lr_clear_rank_if_banned
 ---
 
 ### ⚠ **Требования**
-- **CounterStrikeSharp API**
+- **CounterStrikeSharp API [https://github.com/roflmuffin/CounterStrikeSharp]**
 - **Ranks API**
 - **IksAdmin API**
 
