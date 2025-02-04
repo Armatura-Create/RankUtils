@@ -7,76 +7,84 @@ using RanksApi;
 
 namespace ClearRanksWithBan;
 
-public class DbService(ClearRanksWithBan plugin, IRanksApi ranksApi, IIksAdminApi iksAdminApi)
+public class DbService(RankUtils plugin, IRanksApi ranksApi, IIksAdminApi iksAdminApi)
 {
     public async Task EnsurePrimaryKeyExists()
     {
         try
         {
-            plugin.Logger.LogDebug("Starting to ensure primary key exists");
+            Utils.Log("Starting to ensure primary key exists", Utils.TypeLog.DEBUG);
+
             await using var connection = new MySqlConnection(ranksApi.DatabaseConnectionString);
             await connection.OpenAsync();
 
-            // SQL для проверки наличия PK
+            // 1. Проверка наличия PK
             const string checkPkQuery = @"
-                SELECT COUNT(*) 
-                FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
-                WHERE TABLE_SCHEMA = @DatabaseName
-                  AND TABLE_NAME = @TableName
-                  AND CONSTRAINT_TYPE = 'PRIMARY KEY'";
+            SELECT COUNT(*) 
+            FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+            WHERE TABLE_SCHEMA = @DatabaseName
+              AND TABLE_NAME = @TableName
+              AND CONSTRAINT_TYPE = 'PRIMARY KEY'";
 
             var pkExists = await connection.ExecuteScalarAsync<int>(checkPkQuery, new
             {
-                DatabaseName = GetDatabaseName(ranksApi.DatabaseConnectionString),
+                DatabaseName = Utils.GetDatabaseName(ranksApi.DatabaseConnectionString),
                 TableName = ranksApi.DatabaseTableName
             });
 
             if (pkExists == 0)
             {
-                plugin.Logger.LogDebug("[ClearRanksWithBan] Primary key does not exist. Creating...");
+                Utils.Log("No primary key found. Starting cleanup.", Utils.TypeLog.DEBUG);
+
+                // 2. Добавление временного id (если его нет)
+                await connection.ExecuteAsync($@"
+                    ALTER TABLE `{ranksApi.DatabaseTableName}`
+                    ADD COLUMN id BIGINT AUTO_INCREMENT PRIMARY KEY;
+                ");
+
+                // 3. Удаление дубликатов
                 var cleanUpDuplicatesQuery = $@"
-                    -- 1. Создать временную таблицу с уникальными записями
-                    CREATE TEMPORARY TABLE temp_table AS
-                    SELECT *
+                    DELETE t1
                     FROM `{ranksApi.DatabaseTableName}` t1
-                    WHERE t1.lastconnect = (
-                        SELECT MAX(t2.lastconnect)
-                        FROM `{ranksApi.DatabaseTableName}` t2
-                        WHERE t2.steam = t1.steam
-                    );
-
-                    -- 2. Очистить оригинальную таблицу
-                    TRUNCATE TABLE `{ranksApi.DatabaseTableName}`;
-
-                    -- 3. Вставить уникальные записи обратно
-                    INSERT INTO `{ranksApi.DatabaseTableName}`
-                    SELECT *
-                    FROM temp_table;
-
-                    -- 4. Удалить временную таблицу
-                    DROP TEMPORARY TABLE temp_table;";
+                    LEFT JOIN (
+                        SELECT steam, MAX(lastconnect) AS max_lastconnect, MIN(id) AS min_id
+                        FROM `{ranksApi.DatabaseTableName}`
+                        GROUP BY steam
+                    ) t2
+                    ON t1.steam = t2.steam AND t1.lastconnect = t2.max_lastconnect AND t1.id = t2.min_id
+                    WHERE t2.min_id IS NULL;
+                ";
 
                 await connection.ExecuteAsync(cleanUpDuplicatesQuery);
-                plugin.Logger.LogDebug("[ClearRanksWithBan] Duplicate records cleaned successfully.");
+                Utils.Log("Duplicate records cleaned successfully.", Utils.TypeLog.DEBUG);
 
+                // 4. Удаление временного id
+                await connection.ExecuteAsync($@"
+                    ALTER TABLE `{ranksApi.DatabaseTableName}`
+                    DROP COLUMN id;
+                ");
+
+                // 5. Добавление первичного ключа для steam
+                Utils.Log("Creating primary key...", Utils.TypeLog.DEBUG);
                 var addPkQuery = $@"
                     ALTER TABLE `{ranksApi.DatabaseTableName}`
-                    ADD PRIMARY KEY (`steam`)";
-        
+                    ADD PRIMARY KEY (`steam`);
+                ";
+
                 await connection.ExecuteAsync(addPkQuery);
-                plugin.Logger.LogDebug("[ClearRanksWithBan] Primary key added successfully.");
+                Utils.Log("[ClearRanksWithBan] Primary key added successfully.", Utils.TypeLog.DEBUG);
             }
             else
             {
-                plugin.Logger.LogDebug("[ClearRanksWithBan] Primary key already exists. SUCCESS");
+                Utils.Log("[ClearRanksWithBan] Primary key already exists. SUCCESS", Utils.TypeLog.DEBUG);
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error ensuring primary key: {ex.Message}");
+            Console.WriteLine(ex);
         }
     }
-    
+
     public async Task SetBanExp(string? steamId)
     {
         if (steamId == null)
@@ -98,10 +106,10 @@ public class DbService(ClearRanksWithBan plugin, IRanksApi ranksApi, IIksAdminAp
                     `value` = @Experience,
                     `rank` = @Level";
 
-            plugin.Logger.LogDebug($"[ClearRanksWithBan] Clearing for {steamId}");
+            Utils.Log($"[ClearRanksWithBan] Clearing for {steamId}", Utils.TypeLog.DEBUG);
             await connection.ExecuteAsync(updateQuery, new
             {
-                SteamId = SteamId64ToSteamId(steamId),
+                SteamId = Utils.SteamId64ToSteamId(steamId),
                 Level = 0,
                 Experience = 0
             });
@@ -128,28 +136,92 @@ public class DbService(ClearRanksWithBan plugin, IRanksApi ranksApi, IIksAdminAp
             {
                 await SetBanExp(steamId);
             }
-            AdminUtils.LogDebug("[ClearRanksWithBan] Clearing old bans is done.");
+
+            Utils.Log("Clearing old bans is done.", Utils.TypeLog.SUCCESS);
         }
         catch (Exception e)
         {
             Console.WriteLine(e);
         }
     }
-    
-    private string SteamId64ToSteamId(string steamId64)
+
+    public async Task ResetAll()
     {
-        if (!ulong.TryParse(steamId64, out var steamId))
-            throw new ArgumentException($"Invalid SteamID64 - {steamId64}");
+        try
+        {
+            await using var connection = new MySqlConnection(ranksApi.DatabaseConnectionString);
+            await connection.OpenAsync();
 
-        var z = (steamId - 76561197960265728) / 2;
-        var y = steamId % 2;
+            var resetQuery = $@"
+                UPDATE `{ranksApi.DatabaseTableName}`
+                SET `value` = 0, `rank` = 0, `kills` = 0, `deaths` = 0, `shoots` = 0, `hits` = 0, `headshots` = 0, `assists` = 0, `round_win` = 0, `round_lose` = 0, `playtime` = 0";
 
-        return $"STEAM_1:{y}:{z}";
+            await connection.ExecuteAsync(resetQuery);
+            Utils.Log("All data reset successfully.", Utils.TypeLog.SUCCESS);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+        }
     }
-    
-    private string GetDatabaseName(string connectionString)
+
+    public async Task ResetExp()
     {
-        var match = Regex.Match(connectionString, @"Database\s*=\s*([^;]+)", RegexOptions.IgnoreCase);
-        return match.Success ? match.Groups[1].Value : throw new ArgumentException("Database name not found in connection string");
+        try
+        {
+            await using var connection = new MySqlConnection(ranksApi.DatabaseConnectionString);
+            await connection.OpenAsync();
+
+            var resetQuery = $@"
+                UPDATE `{ranksApi.DatabaseTableName}`
+                SET `value` = 0, `rank` = 0";
+
+            await connection.ExecuteAsync(resetQuery);
+            Utils.Log("Experience data reset successfully.", Utils.TypeLog.SUCCESS);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+        }
+    }
+
+    public async Task ResetStats()
+    {
+        try
+        {
+            await using var connection = new MySqlConnection(ranksApi.DatabaseConnectionString);
+            await connection.OpenAsync();
+
+            var resetQuery = $@"
+                UPDATE `{ranksApi.DatabaseTableName}`
+                SET `kills` = 0, `deaths` = 0, `shoots` = 0, `hits` = 0, `headshots` = 0, `assists` = 0, `round_win` = 0, `round_lose` = 0";
+
+            await connection.ExecuteAsync(resetQuery);
+            Utils.Log("Stats data reset successfully.", Utils.TypeLog.SUCCESS);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+        }
+    }
+
+    public async Task ResetPlayTime()
+    {
+        try
+        {
+            await using var connection = new MySqlConnection(ranksApi.DatabaseConnectionString);
+            await connection.OpenAsync();
+
+            var resetQuery = $@"
+                UPDATE `{ranksApi.DatabaseTableName}`
+                SET `playtime` = 0";
+
+            await connection.ExecuteAsync(resetQuery);
+            Utils.Log("Playtime data reset successfully.", Utils.TypeLog.SUCCESS);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+        }
     }
 }
