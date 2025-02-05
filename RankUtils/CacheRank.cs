@@ -6,12 +6,12 @@ namespace RankUtils;
 public class CacheRank
 {
     private readonly string _cacheFilePath;
-    private readonly PluginConfig _pluginConfig;
+    private RankUtils _plugin;
     
-    public CacheRank(PluginConfig pluginConfig, string cacheFilePath)
+    public CacheRank(RankUtils plugin)
     {
-        _cacheFilePath = cacheFilePath;
-        _pluginConfig = pluginConfig;
+        _cacheFilePath = plugin.ModuleDirectory + "/cache_rank.json";
+        _plugin = plugin;
         EnsureCacheFileExists();
     }
 
@@ -27,7 +27,7 @@ public class CacheRank
     {
         var cacheModels = LoadCache();
         Utils.Log($"Cache loaded: {cacheModels.Count} records", Utils.TypeLog.DEBUG);
-        return cacheModels.Find(x => x.Steam == steamId &&  DateTime.UtcNow - x.Timestamp < TimeSpan.FromDays(_pluginConfig.CacheSaveBanRank));
+        return cacheModels.Find(x => x.Steam == steamId &&  DateTime.UtcNow - x.Timestamp < TimeSpan.FromDays(_plugin.Config.CacheSaveBanRank));
     }
     
     private List<CacheModel> LoadCache()
@@ -48,7 +48,7 @@ public class CacheRank
         if (model.Steam == string.Empty) return;
         var cache = LoadCache();
 
-        cache.RemoveAll(x => DateTime.UtcNow - x.Timestamp > TimeSpan.FromDays(_pluginConfig.CacheSaveBanRank) || x.Steam == model.Steam);
+        cache.RemoveAll(x => DateTime.UtcNow - x.Timestamp > TimeSpan.FromDays(_plugin.Config.CacheSaveBanRank) || x.Steam == model.Steam);
         
         cache.Add(model);
 
@@ -68,6 +68,28 @@ public class CacheRank
         {
             var json = JsonSerializer.Serialize(cache, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(_cacheFilePath, json);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error saving cache: {ex.Message}");
+        }
+    }
+    
+    public void SaveTop10(List<CacheModel> cache, string type)
+    {
+        if (!_plugin.Config.SaveTop10)
+        {
+            Utils.Log("SaveTop10 disabled in config!", Utils.TypeLog.INFO);
+            return;
+        }
+        try
+        {
+            var timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd_HH-mm");
+            var fileName = $"{type}_{timestamp}.json";
+            var filePath = Path.Combine(_plugin.ModuleDirectory, fileName);
+            var json = JsonSerializer.Serialize(cache, new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(filePath, json);
+            Utils.Log($"[SaveTop10] File saved: {filePath}", Utils.TypeLog.SUCCESS);
         }
         catch (Exception ex)
         {

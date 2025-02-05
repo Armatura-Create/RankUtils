@@ -3,10 +3,10 @@ using Cronos;
 
 namespace RankUtils;
 
-public class CronJobService
+public class CronJobService(PluginConfig pluginConfig)
 {
     private readonly CancellationTokenSource _cts = new();
-    private PluginConfig _pluginConfig;
+    private PluginConfig _pluginConfig = pluginConfig;
 
     public void InitializeConfig(PluginConfig pluginConfig)
     {
@@ -31,7 +31,7 @@ public class CronJobService
 
     private async Task RunCronJob(PluginConfig.Cron cronSetting)
     {
-        DateTime? nextRun = CronExpression.Parse(cronSetting.CronExpression).GetNextOccurrence(DateTime.UtcNow);
+        var nextRun = CronExpression.Parse(cronSetting.CronExpression).GetNextOccurrence(DateTime.UtcNow);
         while (!_cts.Token.IsCancellationRequested)
         {
             var now = DateTime.UtcNow;
@@ -49,8 +49,8 @@ public class CronJobService
                 continue;
             }
 
-            Utils.Log($"[CronService] Next cron execution in: {Utils.FormatDelay(delay)}", Utils.TypeLog.INFO);
-            Utils.Log($"[CronService] Scheduled command: {cronSetting.Command}", Utils.TypeLog.INFO);
+            var formattedNextRun = nextRun.Value.ToString("yyyy-MM-dd HH:mm");
+            Utils.Log($"[CronService] Command: {cronSetting.Command} | Next run: {formattedNextRun} ({Utils.FormatDelay(delay)})", Utils.TypeLog.INFO);
 
             try
             {

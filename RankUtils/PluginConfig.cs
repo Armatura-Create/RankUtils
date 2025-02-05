@@ -8,6 +8,9 @@ public class PluginConfig : IBasePluginConfig
     [JsonPropertyName("Debug")]
     public bool Debug { get; set; } = false;
     
+    [JsonPropertyName("SaveTop10")]
+    public bool SaveTop10 { get; set; } = true;
+    
     [JsonPropertyName("CronSettings")]
     public List<Cron> CronSettings { get; set; } =
     [
@@ -30,5 +33,5 @@ public class PluginConfig : IBasePluginConfig
         public string Command { get; set; } = "";
     }
 
-    public int Version { get; set; } = 1;
+    public int Version { get; set; } = 2;
 }

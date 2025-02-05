@@ -2,6 +2,7 @@ using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Attributes;
 using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Modules.Commands;
+using Cronos;
 using IksAdminApi;
 using Microsoft.Extensions.Logging;
 using RanksApi;
@@ -14,28 +15,32 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
     public override string ModuleName => "RankUtils";
     public override string ModuleAuthor => "Armatura";
     public override string ModuleVersion => "1.0.1";
+    
+    public static bool IsDebug { get; set; }
 
     private IRanksApi? _api;
     private DbService? _dbService;
     
-    private readonly CronJobService _cronJobService = new();
+    private CronJobService _cronJobService;
     
     public PluginConfig Config { get; set; }
-    public CacheRank CacheRank { get; set; }
+    private CacheRank CacheRank { get; set; }
 
     private bool _isReady;
     
     public void OnConfigParsed(PluginConfig config)
     {
         Config = config;
-        CacheRank = new CacheRank(config, ModuleDirectory + "/cache_rank.json");
+        CacheRank = new CacheRank(this);
 
         if (Config.CacheSaveBanRank > 7)
         {
             Config.CacheSaveBanRank = 7;
         }
         
-        _cronJobService.InitializeConfig(Config);
+        IsDebug = Config.Debug;
+
+        _cronJobService = new CronJobService(Config);
         
         Utils.Log("[RankUtils] Config parsed!", Utils.TypeLog.DEBUG);
     }
@@ -44,6 +49,8 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
     {
         Utils.Log("[RankUtils] Plugin loaded!", Utils.TypeLog.SUCCESS);
         _ = _cronJobService.StartAsync();
+        if (!hotReload) return;
+        _cronJobService.InitializeConfig(Config);
     }
 
     public override void Unload(bool hotReload)
@@ -115,6 +122,11 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
     [ConsoleCommand("css_lr_clear_rank_if_banned")]
     public void ClearRankIfBanned(CCSPlayerController? player, CommandInfo info)
     {
+        if (!_isReady)
+        {
+            Utils.Log("Plugin Ranks API is not ready yet.", Utils.TypeLog.WARN);
+        }
+        
         Utils.Log("Clearing rank exp for banned players...", Utils.TypeLog.INFO);
         if (_isReady) _dbService?.StartClearOldBan();
     }
@@ -128,6 +140,11 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
     public void ResetRanks(CCSPlayerController? player, CommandInfo info)
     {
         if (info.ArgCount < 1) return;
+
+        if (!_isReady)
+        {
+            Utils.Log("Plugin Ranks API is not ready yet.", Utils.TypeLog.WARN);
+        }
         
         var arg = info.GetArg(1);
         switch (arg)
@@ -147,6 +164,43 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
             default:
                 Utils.Log("Invalid argument. Usage: css_lr_reset_ranks <all|exp|stats>", Utils.TypeLog.WARN);
                 break;
+        }
+    }
+    
+    [CommandHelper(whoCanExecute: CommandUsage.SERVER_ONLY)]
+    [ConsoleCommand("css_ru_cron_list")]
+    public void CronList(CCSPlayerController? player, CommandInfo info)
+    {
+        Utils.Log("Cron list:", Utils.TypeLog.INFO);
+
+        if (Config.CronSettings.Count == 0)
+        {
+            Utils.Log("No CRON jobs configured.", Utils.TypeLog.WARN);
+            return;
+        }
+
+        foreach (var cronSetting in Config.CronSettings)
+        {
+            try
+            {
+                // Вычисляем следующее время выполнения
+                var nextRun = CronExpression.Parse(cronSetting.CronExpression)
+                    .GetNextOccurrence(DateTime.UtcNow);
+
+                if (nextRun.HasValue)
+                {
+                    var formattedNextRun = nextRun.Value.ToString("yyyy-MM-dd HH:mm");
+                    Utils.Log($"Command: {cronSetting.Command} | Next run: {formattedNextRun}", Utils.TypeLog.INFO);
+                }
+                else
+                {
+                    Utils.Log($"Command: {cronSetting.Command} | No next execution time found.", Utils.TypeLog.WARN);
+                }
+            }
+            catch (Exception ex)
+            {
+                Utils.Log($"Error parsing CRON expression for command {cronSetting.Command}: {ex.Message}", Utils.TypeLog.WARN);
+            }
         }
     }
     

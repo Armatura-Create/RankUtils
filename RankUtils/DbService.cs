@@ -236,6 +236,8 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
     {
         try
         {
+            await ExportTop10("reset_all");
+            
             await using var connection = new MySqlConnection(ranksApi.DatabaseConnectionString);
             await connection.OpenAsync();
 
@@ -256,6 +258,8 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
     {
         try
         {
+            await ExportTop10("reset_exp");
+            
             await using var connection = new MySqlConnection(ranksApi.DatabaseConnectionString);
             await connection.OpenAsync();
 
@@ -276,6 +280,8 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
     {
         try
         {
+            await ExportTop10("reset_stats");
+            
             await using var connection = new MySqlConnection(ranksApi.DatabaseConnectionString);
             await connection.OpenAsync();
 
@@ -296,6 +302,8 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
     {
         try
         {
+            await ExportTop10("reset_playtime");
+            
             await using var connection = new MySqlConnection(ranksApi.DatabaseConnectionString);
             await connection.OpenAsync();
 
@@ -309,6 +317,38 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
         catch (Exception e)
         {
             Console.WriteLine(e);
+        }
+    }
+    
+    private async Task ExportTop10(string type)
+    {
+        try
+        {
+            await using var connection = new MySqlConnection(ranksApi.DatabaseConnectionString);
+            await connection.OpenAsync();
+
+            // Получение топ-10 по `value`
+            var top10Query = $@"
+                SELECT `steam`, `name`, `value`, `rank`, `kills`, `deaths`, `shoots`, `hits`, `headshots`, `assists`, `round_win`, `round_lose`, `playtime`, `lastconnect`
+                FROM `{ranksApi.DatabaseTableName}`
+                WHERE `value` > 0
+                ORDER BY `value` DESC
+                LIMIT 10";
+
+            var top10 = (await connection.QueryAsync<CacheRank.CacheModel>(top10Query)).ToList();
+
+            if (top10.Count > 0)
+            {
+                cacheRank.SaveTop10(top10, type);
+            }
+            else
+            {
+                Utils.Log("No data available for Top 10 export.", Utils.TypeLog.WARN);
+            }
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine($"Error exporting top 10: {e.Message}");
         }
     }
 }

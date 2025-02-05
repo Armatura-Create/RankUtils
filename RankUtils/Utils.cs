@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using CounterStrikeSharp.API.Core.Plugin;
 
 namespace RankUtils;
 
@@ -6,6 +7,8 @@ public static class Utils
 {
     public static void Log(string message, TypeLog type)
     {
+        if (!RankUtils.IsDebug && type == TypeLog.DEBUG) return;
+        
         Console.ForegroundColor = GetConsoleColor(type);
         Console.WriteLine($"[RankUtils] [{type}] {message}");
         Console.ResetColor();
