@@ -54,6 +54,12 @@ public class CronJobService
 
             try
             {
+                while (delay > TimeSpan.FromMilliseconds(int.MaxValue))
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(int.MaxValue), _cts.Token);
+                    delay -= TimeSpan.FromMilliseconds(int.MaxValue);
+                }
+                
                 await Task.Delay(delay, _cts.Token);
                 ExecuteCommand(cronSetting.Command);
             }
