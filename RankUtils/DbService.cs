@@ -5,7 +5,7 @@ using RanksApi;
 
 namespace RankUtils;
 
-public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi)
+public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank cacheRank)
 {
     public async Task EnsurePrimaryKeyExists()
     {
@@ -95,6 +95,26 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi)
             await using var connection = new MySqlConnection(ranksApi.DatabaseConnectionString);
             await connection.OpenAsync();
 
+            var selectQuery = $@"
+                SELECT `steam`, `name`, `value`, `rank`, `kills`, `deaths`, `shoots`, `hits`, `headshots`, `assists`, `round_win`, `round_lose`, `playtime`, `lastconnect`
+                FROM `{ranksApi.DatabaseTableName}`
+                WHERE `steam` = @SteamId";
+
+            var existingData = await connection.QueryFirstOrDefaultAsync<CacheRank.CacheModel>(selectQuery, new
+            {
+                SteamId = Utils.SteamId64ToSteamId(steamId)
+            });
+
+            if (existingData != null)
+            {
+                cacheRank.AddToCache(existingData);
+                Utils.Log($"Cached data for SteamId: {existingData.Steam}", Utils.TypeLog.DEBUG);
+            }
+            else
+            {
+                Utils.Log($"No existing data found for SteamId: {steamId}", Utils.TypeLog.WARN);
+            }
+
             var updateQuery = $@"
                 INSERT INTO `{ranksApi.DatabaseTableName}` 
                     (`steam`, `name`, `value`, `rank`, `kills`, `deaths`, `shoots`, `hits`, `headshots`, `assists`, `round_win`, `round_lose`, `playtime`, `lastconnect`) 
@@ -104,13 +124,82 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi)
                     `value` = @Experience,
                     `rank` = @Level";
 
-            Utils.Log($"[RankUtils] Clearing for {steamId}", Utils.TypeLog.DEBUG);
+            Utils.Log($"[RankUtils] Clearing exp for {Utils.SteamId64ToSteamId(steamId)}", Utils.TypeLog.DEBUG);
             await connection.ExecuteAsync(updateQuery, new
             {
                 SteamId = Utils.SteamId64ToSteamId(steamId),
                 Level = 0,
                 Experience = 0
             });
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+        }
+    }
+
+    public async Task SetUnBanExp(string? steamId)
+    {
+        if (steamId == null)
+        {
+            throw new ArgumentException("SteamId is null");
+        }
+
+        try
+        {
+            // Проверяем наличие записи в кэше
+            var cachedData = cacheRank.GetCacheModel(Utils.SteamId64ToSteamId(steamId));
+            if (cachedData == null)
+            {
+                Utils.Log($"[RankUtils] No cached data found for SteamId: {Utils.SteamId64ToSteamId(steamId)}. Cannot restore data.", Utils.TypeLog.WARN);
+                return;
+            }
+
+            await using var connection = new MySqlConnection(ranksApi.DatabaseConnectionString);
+            await connection.OpenAsync();
+
+            // Восстанавливаем данные в таблице из кэша
+            var restoreQuery = $@"
+                INSERT INTO `{ranksApi.DatabaseTableName}` 
+                    (`steam`, `name`, `value`, `rank`, `kills`, `deaths`, `shoots`, `hits`, `headshots`, `assists`, `round_win`, `round_lose`, `playtime`, `lastconnect`) 
+                VALUES 
+                    (@SteamId, @Name, @Value, @Rank, @Kills, @Deaths, @Shoots, @Hits, @Headshots, @Assists, @RoundWin, @RoundLose, @Playtime, @Lastconnect)
+                ON DUPLICATE KEY UPDATE 
+                    `name` = @Name,
+                    `value` = @Value,
+                    `rank` = @Rank,
+                    `kills` = @Kills,
+                    `deaths` = @Deaths,
+                    `shoots` = @Shoots,
+                    `hits` = @Hits,
+                    `headshots` = @Headshots,
+                    `assists` = @Assists,
+                    `round_win` = @RoundWin,
+                    `round_lose` = @RoundLose,
+                    `playtime` = @Playtime,
+                    `lastconnect` = @Lastconnect";
+
+            await connection.ExecuteAsync(restoreQuery, new
+            {
+                SteamId = cachedData.Steam,
+                Name = cachedData.Name,
+                Value = cachedData.Value,
+                Rank = cachedData.Rank,
+                Kills = cachedData.Kills,
+                Deaths = cachedData.Deaths,
+                Shoots = cachedData.Shoots,
+                Hits = cachedData.Hits,
+                Headshots = cachedData.Headshots,
+                Assists = cachedData.Assists,
+                RoundWin = cachedData.Round_Win,
+                RoundLose = cachedData.Round_Lose,
+                Playtime = cachedData.Playtime,
+                Lastconnect = cachedData.Lastconnect
+            });
+
+            Utils.Log($"[RankUtils] Successfully restored data for SteamId: {steamId} from cache.", Utils.TypeLog.SUCCESS);
+            
+            cacheRank.RemoveFromCache(Utils.SteamId64ToSteamId(steamId));
         }
         catch (Exception e)
         {

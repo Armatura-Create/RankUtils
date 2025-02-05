@@ -1,45 +1,69 @@
+using CounterStrikeSharp.API;
+using Cronos;
+
 namespace RankUtils;
 
 public class CronJobService
 {
-    
-    private string _cronExpression;
     private readonly CancellationTokenSource _cts = new();
-    
-    public CronJobService()
+    private PluginConfig _pluginConfig;
+
+    public void InitializeConfig(PluginConfig pluginConfig)
     {
-        LoadConfig();
+        _pluginConfig = pluginConfig;
     }
-    
-    private void LoadConfig()
-    {
-        try
-        {
-            var configJson = File.ReadAllText("config.json");
-            var config = JsonSerializer.Deserialize<ConfigModel>(configJson);
-            _cronExpression = config?.CronExpression ?? "0 0 * * *"; // Если нет в JSON, то раз в сутки
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Ошибка загрузки конфига: {ex.Message}");
-            _cronExpression = "0 0 * * *"; // Значение по умолчанию
-        }
-    }
-    
+
     public async Task StartAsync()
     {
-        Console.WriteLine($"[CronService] Запуск по CRON: {_cronExpression}");
+        if (_pluginConfig.CronSettings.Count == 0)
+        {
+            Utils.Log("[CronService] No CRON jobs configured.", Utils.TypeLog.WARN);
+            return;
+        }
 
+        foreach (var cronSetting in _pluginConfig.CronSettings)
+        {
+            _ = Task.Run(() => RunCronJob(cronSetting), _cts.Token);
+        }
+    }
+
+    private async Task RunCronJob(PluginConfig.Cron cronSetting)
+    {
         while (!_cts.Token.IsCancellationRequested)
         {
-            var nextRun = CronExpression.Parse(_cronExpression).GetNextOccurrence(DateTime.UtcNow);
+            var nextRun = CronExpression.Parse(cronSetting.CronExpression).GetNextOccurrence(DateTime.UtcNow);
             if (nextRun == null) continue;
 
             var delay = nextRun.Value - DateTime.UtcNow;
-            Console.WriteLine($"[CronService] Следующий запуск через: {delay}");
+            Utils.Log($"[CronService] Next cron execution in: {delay}", Utils.TypeLog.INFO);
+            Utils.Log($"[CronService] Scheduled command: {cronSetting.Command}", Utils.TypeLog.INFO);
 
             await Task.Delay(delay, _cts.Token);
-            ExecuteCommand();
+            ExecuteCommand(cronSetting.Command);
         }
+    }
+
+    private void ExecuteCommand(string command)
+    {
+        try
+        {
+            Utils.Log($"[CronService] Executing command: {command}", Utils.TypeLog.INFO);
+            Server.NextWorldUpdate(() => Server.ExecuteCommand(command));
+        }
+        catch (Exception e)
+        {
+            Utils.Log($"[CronService] Error: {e.Message}", Utils.TypeLog.WARN);
+        }
+    }
+
+    public void Stop()
+    {
+        _cts.Cancel();
+    }
+    
+    public void Restart()
+    {
+        Stop();
+        _ = StartAsync();
     }
 }

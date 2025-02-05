@@ -4,6 +4,7 @@
         <DebugSymbols>False</DebugSymbols>
         <DebugType>None</DebugType>
         <PublishDir>./bin/RankUtils/</PublishDir>
+        <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies> <!-- Включает копирование всех зависимостей -->
     </PropertyGroup>
 
     <PropertyGroup>
@@ -11,6 +12,7 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <RootNamespace>RankUtils</RootNamespace>
+        <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies> <!-- Для всех конфигураций -->
     </PropertyGroup>
 
     <ItemGroup>
@@ -19,10 +21,17 @@
             <ExcludeAssets>runtime</ExcludeAssets>
             <IncludeAssets>compile; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
+        <PackageReference Include="Cronos" Version="*" />
         <PackageReference Include="Dapper" Version="*" />
         <PackageReference Include="MySqlConnector" Version="*" />
-        <Reference Include="../RequirmentsApi/IksAdminApi.dll" />
-        <Reference Include="../RequirmentsApi/RanksApi.dll" />
+        <PackageReference Include="Newtonsoft.Json" Version="*" />
+        <!-- Обеспечиваем копирование локальных DLL -->
+        <Reference Include="../RequirmentsApi/IksAdminApi.dll">
+            <Private>True</Private> <!-- DLL будет скопирована -->
+        </Reference>
+        <Reference Include="../RequirmentsApi/RanksApi.dll">
+            <Private>True</Private> <!-- DLL будет скопирована -->
+        </Reference>
     </ItemGroup>
 
 </Project>
