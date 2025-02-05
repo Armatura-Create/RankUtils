@@ -39,6 +39,11 @@ public static class Utils
             _ => ConsoleColor.White                 // Белый по умолчанию
         };
     }
+    
+    public static string FormatDelay(TimeSpan delay)
+    {
+        return $"{delay.Days}d {delay.Hours}h {delay.Minutes}m {delay.Seconds}s";
+    }
 
     public enum TypeLog
     {
