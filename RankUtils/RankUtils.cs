@@ -1,3 +1,4 @@
+using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Attributes;
 using CounterStrikeSharp.API.Core.Attributes.Registration;
@@ -14,20 +15,20 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
 {
     public override string ModuleName => "RankUtils";
     public override string ModuleAuthor => "Armatura";
-    public override string ModuleVersion => "1.0.1";
-    
+    public override string ModuleVersion => "1.0.3";
+
     public static bool IsDebug { get; set; }
 
     private IRanksApi? _api;
     private DbService? _dbService;
-    
+
     private CronJobService _cronJobService;
-    
+
     public PluginConfig Config { get; set; }
     private CacheRank CacheRank { get; set; }
 
     private bool _isReady;
-    
+
     public void OnConfigParsed(PluginConfig config)
     {
         Config = config;
@@ -37,11 +38,11 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
         {
             Config.CacheSaveBanRank = 7;
         }
-        
+
         IsDebug = Config.Debug;
 
         _cronJobService = new CronJobService(Config);
-        
+
         Utils.Log("[RankUtils] Config parsed!", Utils.TypeLog.DEBUG);
     }
 
@@ -74,7 +75,7 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
         _dbService = new DbService(_api, Api, CacheRank);
 
         _isReady = true;
-        
+
         _dbService?.EnsurePrimaryKeyExists();
 
         Utils.Log("Ready", Utils.TypeLog.SUCCESS);
@@ -86,8 +87,9 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
     {
         if (_api == null || string.IsNullOrEmpty(ban.SteamId)) return HookResult.Continue;
 
-        Utils.Log($"BAN EVENT: Admin: {ban.Admin}, Player: {ban.Name}, Reason: {ban.Reason}", Utils.TypeLog.DEBUG);
-        
+        Utils.Log($"BAN EVENT: Admin: {ban.Admin?.Name}, Player: {ban.Name}, Reason: {ban.Reason}",
+            Utils.TypeLog.DEBUG);
+
         try
         {
             _dbService?.SetBanExp(ban.SteamId);
@@ -99,13 +101,13 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
 
         return HookResult.Continue;
     }
-    
+
     private HookResult OnUnBanPlayerPost(Admin admin, ref string arg, ref string? reason, ref bool announce)
     {
         if (_api == null || string.IsNullOrEmpty(arg)) return HookResult.Continue;
 
         Utils.Log($"UNBAN EVENT: Admin: {admin.Name}, SteamId: {arg}", Utils.TypeLog.DEBUG);
-        
+
         try
         {
             _dbService?.SetUnBanExp(arg);
@@ -126,16 +128,17 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
         {
             Utils.Log("Plugin Ranks API is not ready yet.", Utils.TypeLog.WARN);
         }
-        
+
         Utils.Log("Clearing rank exp for banned players...", Utils.TypeLog.INFO);
         if (_isReady) _dbService?.StartClearOldBan();
     }
-    
+
     // css_lr_reset_ranks - сбрасывает статистику у всех игроков.
     // all - сбросит все данные.
     // exp - сбросит данные о очках опыта (value, rank).
     // stats - сбросит данные о статистике (kills, deaths, shoots, hits, headshots, assists, round_win, round_lose).
-    [CommandHelper(minArgs: 1, usage: "css_lr_reset_ranks <all|exp|stats|play_time>", whoCanExecute: CommandUsage.SERVER_ONLY)]
+    [CommandHelper(minArgs: 1, usage: "css_lr_reset_ranks <all|exp|stats|play_time>",
+        whoCanExecute: CommandUsage.SERVER_ONLY)]
     [ConsoleCommand("css_lr_reset_ranks")]
     public void ResetRanks(CCSPlayerController? player, CommandInfo info)
     {
@@ -145,7 +148,7 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
         {
             Utils.Log("Plugin Ranks API is not ready yet.", Utils.TypeLog.WARN);
         }
-        
+
         var arg = info.GetArg(1);
         switch (arg)
         {
@@ -166,7 +169,7 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
                 break;
         }
     }
-    
+
     [CommandHelper(whoCanExecute: CommandUsage.SERVER_ONLY)]
     [ConsoleCommand("css_ru_cron_list")]
     public void CronList(CCSPlayerController? player, CommandInfo info)
@@ -199,11 +202,12 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
             }
             catch (Exception ex)
             {
-                Utils.Log($"Error parsing CRON expression for command {cronSetting.Command}: {ex.Message}", Utils.TypeLog.WARN);
+                Utils.Log($"Error parsing CRON expression for command {cronSetting.Command}: {ex.Message}",
+                    Utils.TypeLog.WARN);
             }
         }
     }
-    
+
     // [CommandHelper(whoCanExecute: CommandUsage.SERVER_ONLY)]
     // [ConsoleCommand("css_ru_reload_config")]
     // public void ReloadConfig(CCSPlayerController? player, CommandInfo info)

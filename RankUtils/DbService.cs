@@ -1,3 +1,4 @@
+using CounterStrikeSharp.API;
 using Dapper;
 using IksAdminApi;
 using MySqlConnector;
@@ -76,6 +77,8 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
             {
                 Utils.Log("[RankUtils] Primary key already exists. SUCCESS", Utils.TypeLog.DEBUG);
             }
+            
+            await connection.CloseAsync();
         }
         catch (Exception ex)
         {
@@ -83,7 +86,7 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
         }
     }
 
-    public async Task SetBanExp(string? steamId)
+    public async Task SetBanExp(string? steamId, bool isCached = true)
     {
         if (steamId == null)
         {
@@ -94,25 +97,37 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
         {
             await using var connection = new MySqlConnection(ranksApi.DatabaseConnectionString);
             await connection.OpenAsync();
-
-            var selectQuery = $@"
-                SELECT `steam`, `name`, `value`, `rank`, `kills`, `deaths`, `shoots`, `hits`, `headshots`, `assists`, `round_win`, `round_lose`, `playtime`, `lastconnect`
-                FROM `{ranksApi.DatabaseTableName}`
-                WHERE `steam` = @SteamId";
-
-            var existingData = await connection.QueryFirstOrDefaultAsync<CacheRank.CacheModel>(selectQuery, new
+            if (isCached)
             {
-                SteamId = Utils.SteamId64ToSteamId(steamId)
-            });
+                var selectQuery = $@"
+                    SELECT `steam`, `name`, `value`, `rank`, `kills`, `deaths`, `shoots`, `hits`, `headshots`, `assists`, `round_win`, `round_lose`, `playtime`, `lastconnect`
+                    FROM `{ranksApi.DatabaseTableName}`
+                    WHERE `steam` = @SteamId";
 
-            if (existingData != null)
-            {
-                cacheRank.AddToCache(existingData);
-                Utils.Log($"Cached data for SteamId: {existingData.Steam}", Utils.TypeLog.DEBUG);
+                var existingData = await connection.QueryFirstOrDefaultAsync<CacheRank.CacheModel>(selectQuery, new
+                {
+                    SteamId = Utils.SteamId64ToSteamId(steamId)
+                });
+
+                if (existingData != null)
+                {
+                    cacheRank.AddToCache(existingData);
+                    Utils.Log($"Cached data for SteamId: {existingData.Steam}", Utils.TypeLog.DEBUG);
+                }
+                else
+                {
+                    Utils.Log($"No existing data found for SteamId: {steamId}", Utils.TypeLog.WARN);
+                }
+
+                Utils.Log($"[RankUtils] Clearing exp for {Utils.SteamId64ToSteamId(steamId)}", Utils.TypeLog.DEBUG);
             }
-            else
+
+            foreach (var player in Utilities.GetPlayers()
+                         .Where(player => player is { IsValid: true, IsBot: false }))
             {
-                Utils.Log($"No existing data found for SteamId: {steamId}", Utils.TypeLog.WARN);
+                if (player.AuthorizedSteamID?.SteamId64.ToString() != steamId) continue;
+                ranksApi.SetPlayerExperience(player, 0);
+                return;
             }
 
             var updateQuery = $@"
@@ -124,13 +139,14 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
                     `value` = @Experience,
                     `rank` = @Level";
 
-            Utils.Log($"[RankUtils] Clearing exp for {Utils.SteamId64ToSteamId(steamId)}", Utils.TypeLog.DEBUG);
             await connection.ExecuteAsync(updateQuery, new
             {
                 SteamId = Utils.SteamId64ToSteamId(steamId),
                 Level = 0,
                 Experience = 0
             });
+            
+            await connection.CloseAsync();
         }
         catch (Exception e)
         {
@@ -151,7 +167,9 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
             var cachedData = cacheRank.GetCacheModel(Utils.SteamId64ToSteamId(steamId));
             if (cachedData == null)
             {
-                Utils.Log($"[RankUtils] No cached data found for SteamId: {Utils.SteamId64ToSteamId(steamId)}. Cannot restore data.", Utils.TypeLog.WARN);
+                Utils.Log(
+                    $"[RankUtils] No cached data found for SteamId: {Utils.SteamId64ToSteamId(steamId)}. Cannot restore data.",
+                    Utils.TypeLog.WARN);
                 return;
             }
 
@@ -197,9 +215,12 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
                 Lastconnect = cachedData.Lastconnect
             });
 
-            Utils.Log($"[RankUtils] Successfully restored data for SteamId: {steamId} from cache.", Utils.TypeLog.SUCCESS);
-            
+            Utils.Log($"[RankUtils] Successfully restored data for SteamId: {steamId} from cache.",
+                Utils.TypeLog.SUCCESS);
+
             cacheRank.RemoveFromCache(Utils.SteamId64ToSteamId(steamId));
+            
+            await connection.CloseAsync();
         }
         catch (Exception e)
         {
@@ -221,7 +242,7 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
             var steamIds = await connection.QueryAsync<string>(selectQuery);
             foreach (var steamId in steamIds)
             {
-                await SetBanExp(steamId);
+                await SetBanExp(steamId, false);
             }
 
             Utils.Log("Clearing old bans is done.", Utils.TypeLog.SUCCESS);
@@ -237,7 +258,7 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
         try
         {
             await ExportTop10("reset_all");
-            
+
             await using var connection = new MySqlConnection(ranksApi.DatabaseConnectionString);
             await connection.OpenAsync();
 
@@ -259,7 +280,7 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
         try
         {
             await ExportTop10("reset_exp");
-            
+
             await using var connection = new MySqlConnection(ranksApi.DatabaseConnectionString);
             await connection.OpenAsync();
 
@@ -281,7 +302,7 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
         try
         {
             await ExportTop10("reset_stats");
-            
+
             await using var connection = new MySqlConnection(ranksApi.DatabaseConnectionString);
             await connection.OpenAsync();
 
@@ -303,7 +324,7 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
         try
         {
             await ExportTop10("reset_playtime");
-            
+
             await using var connection = new MySqlConnection(ranksApi.DatabaseConnectionString);
             await connection.OpenAsync();
 
@@ -319,7 +340,7 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
             Console.WriteLine(e);
         }
     }
-    
+
     private async Task ExportTop10(string type)
     {
         try
