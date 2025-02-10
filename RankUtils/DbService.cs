@@ -275,7 +275,7 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
         }
     }
 
-    public async Task ResetExp()
+    public async Task ResetExp(int days = 0)
     {
         try
         {
@@ -288,8 +288,13 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
                 UPDATE `{ranksApi.DatabaseTableName}`
                 SET `value` = 0, `rank` = 0";
 
-            await connection.ExecuteAsync(resetQuery);
-            Utils.Log("Experience data reset successfully.", Utils.TypeLog.SUCCESS);
+            if (days > 0)
+            {
+                resetQuery += $" WHERE `lastconnect` = DATE_SUB(NOW(), INTERVAL @Days DAY)";
+            }
+
+            var affectedRows = await connection.ExecuteAsync(resetQuery, new { Days = days });
+            Utils.Log($"{affectedRows} rows have been reset successfully.", Utils.TypeLog.SUCCESS);
         }
         catch (Exception e)
         {

@@ -15,7 +15,7 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
 {
     public override string ModuleName => "RankUtils";
     public override string ModuleAuthor => "Armatura";
-    public override string ModuleVersion => "1.0.3";
+    public override string ModuleVersion => "1.0.4";
 
     public static bool IsDebug { get; set; }
 
@@ -147,6 +147,7 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
         if (!_isReady)
         {
             Utils.Log("Plugin Ranks API is not ready yet.", Utils.TypeLog.WARN);
+            return;
         }
 
         var arg = info.GetArg(1);
@@ -167,6 +168,36 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
             default:
                 Utils.Log("Invalid argument. Usage: css_lr_reset_ranks <all|exp|stats>", Utils.TypeLog.WARN);
                 break;
+        }
+    }
+    
+    [CommandHelper(minArgs: 1, usage: "css_lr_reset_old_exp <NUMBER>",
+        whoCanExecute: CommandUsage.SERVER_ONLY)]
+    [ConsoleCommand("css_lr_reset_old_exp")]
+    public void ResetOldExp(CCSPlayerController? player, CommandInfo info)
+    {
+        if (info.ArgCount < 1) return;
+
+        if (!_isReady)
+        {
+            Utils.Log("Plugin Ranks API is not ready yet.", Utils.TypeLog.WARN);
+            return;
+        }
+        
+        if (!int.TryParse(info.GetArg(1), out var arg))
+        {
+            Utils.Log("Invalid argument. Please provide a valid number of days.", Utils.TypeLog.WARN);
+            return;
+        }
+
+        try
+        {
+            _dbService?.ResetExp(arg);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            throw;
         }
     }
 
