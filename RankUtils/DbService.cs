@@ -1,4 +1,3 @@
-using CounterStrikeSharp.API;
 using Dapper;
 using IksAdminApi;
 using MySqlConnector;
@@ -77,7 +76,7 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
             {
                 Utils.Log("[RankUtils] Primary key already exists. SUCCESS", Utils.TypeLog.DEBUG);
             }
-            
+
             await connection.CloseAsync();
         }
         catch (Exception ex)
@@ -122,19 +121,11 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
                 Utils.Log($"[RankUtils] Clearing exp for {Utils.SteamId64ToSteamId(steamId)}", Utils.TypeLog.DEBUG);
             }
 
-            foreach (var player in Utilities.GetPlayers()
-                         .Where(player => player is { IsValid: true, IsBot: false }))
-            {
-                if (player.AuthorizedSteamID?.SteamId64.ToString() != steamId) continue;
-                ranksApi.SetPlayerExperience(player, 0);
-                return;
-            }
-
             var updateQuery = $@"
                 INSERT INTO `{ranksApi.DatabaseTableName}` 
                     (`steam`, `name`, `value`, `rank`, `kills`, `deaths`, `shoots`, `hits`, `headshots`, `assists`, `round_win`, `round_lose`, `playtime`, `lastconnect`) 
                 VALUES 
-                    (@SteamId, 'Unknow', @Experience, @Level, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+                    (@SteamId, 'Unknow', @Experience, @Level, 0, 0, 0, 0, 0, 0, 0, 0, 0, UNIX_TIMESTAMP())
                 ON DUPLICATE KEY UPDATE 
                     `value` = @Experience,
                     `rank` = @Level";
@@ -145,7 +136,7 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
                 Level = 0,
                 Experience = 0
             });
-            
+
             await connection.CloseAsync();
         }
         catch (Exception e)
@@ -219,7 +210,7 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
                 Utils.TypeLog.SUCCESS);
 
             cacheRank.RemoveFromCache(Utils.SteamId64ToSteamId(steamId));
-            
+
             await connection.CloseAsync();
         }
         catch (Exception e)
@@ -235,9 +226,9 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
             await using var connection = new MySqlConnection(iksAdminApi.DbConnectionString);
             await connection.OpenAsync();
 
-            var selectQuery = @"
+            const string selectQuery = @"
                 SELECT DISTINCT `steam_id`
-                FROM `iks_bans`";
+                FROM `iks_bans` WHERE `unbanned_by` == NULL";
 
             var steamIds = await connection.QueryAsync<string>(selectQuery);
             foreach (var steamId in steamIds)
@@ -275,25 +266,37 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
         }
     }
 
-    public async Task ResetExp(int days = 0)
+    public async Task ResetExp(int days = 0, List<string>? excludeSteamIds = null)
     {
         try
         {
-            await ExportTop10("reset_exp");
+            if (days == 0)
+            {
+                await ExportTop10("reset_exp");
+            }
 
             await using var connection = new MySqlConnection(ranksApi.DatabaseConnectionString);
             await connection.OpenAsync();
 
+            var parameters = new DynamicParameters();
+            
             var resetQuery = $@"
                 UPDATE `{ranksApi.DatabaseTableName}`
                 SET `value` = 0, `rank` = 0";
 
             if (days > 0)
             {
-                resetQuery += $" WHERE `lastconnect` = DATE_SUB(NOW(), INTERVAL @Days DAY)";
+                resetQuery += " WHERE `lastconnect` <= UNIX_TIMESTAMP(DATE_SUB(NOW(), INTERVAL @Days DAY))";
+                parameters.Add("Days", days);
             }
 
-            var affectedRows = await connection.ExecuteAsync(resetQuery, new { Days = days });
+            if (excludeSteamIds is { Count: > 0 })
+            {
+                resetQuery += (days > 0 ? " AND" : " WHERE") + " `steam` NOT IN @SteamIdList";
+                parameters.Add("SteamIdList", excludeSteamIds);
+            }
+
+            var affectedRows = await connection.ExecuteAsync(resetQuery, parameters);
             Utils.Log($"{affectedRows} rows have been reset successfully.", Utils.TypeLog.SUCCESS);
         }
         catch (Exception e)

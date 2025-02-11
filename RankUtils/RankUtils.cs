@@ -15,7 +15,7 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
 {
     public override string ModuleName => "RankUtils";
     public override string ModuleAuthor => "Armatura";
-    public override string ModuleVersion => "1.0.4";
+    public override string ModuleVersion => "1.0.4fix";
 
     public static bool IsDebug { get; set; }
 
@@ -90,15 +90,34 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
         Utils.Log($"BAN EVENT: Admin: {ban.Admin?.Name}, Player: {ban.Name}, Reason: {ban.Reason}",
             Utils.TypeLog.DEBUG);
 
-        try
+        Server.NextWorldUpdate(() =>
         {
-            _dbService?.SetBanExp(ban.SteamId);
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine(e);
-        }
-
+            try
+            {
+                var isOnline = false;
+            
+                foreach (var player in Utilities.GetPlayers()
+                             .Where(player => player is { IsValid: true, IsBot: false, IsHLTV: false}))
+                {
+                    Utils.Log("Player online: " + player.AuthorizedSteamID?.SteamId64, Utils.TypeLog.DEBUG);
+                    if (player.AuthorizedSteamID?.SteamId64.ToString() != ban.SteamId) continue;
+                    Utils.Log($"Player {player.AuthorizedSteamID.SteamId64} online yet - reset by api", Utils.TypeLog.DEBUG);
+                    _api.SetPlayerExperience(player, 0);
+                    isOnline = true;
+                    break;
+                }
+            
+                if (!isOnline)
+                {
+                    _dbService?.SetBanExp(ban.SteamId);
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+            }
+        });
+        
         return HookResult.Continue;
     }
 
@@ -157,7 +176,17 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
                 _dbService?.ResetAll();
                 break;
             case "exp":
-                _dbService?.ResetExp();
+                Server.NextWorldUpdate(() =>
+                {
+                    List<string> steamIds = [];
+                    foreach (var p in Utilities.GetPlayers()
+                                 .Where(p => player is { IsValid: true, IsBot: false, IsHLTV: false}))
+                    {
+                        if (p.AuthorizedSteamID == null) continue;
+                        steamIds.Add(p.AuthorizedSteamID.SteamId64.ToString());
+                    }
+                    _dbService?.ResetExp(excludeSteamIds: steamIds);
+                });
                 break;
             case "stats":
                 _dbService?.ResetStats();
@@ -188,6 +217,11 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
         {
             Utils.Log("Invalid argument. Please provide a valid number of days.", Utils.TypeLog.WARN);
             return;
+        }
+
+        for (int i = 0; i < info.ArgCount; i++)
+        {
+            Utils.Log($"{info.GetArg(i)}", Utils.TypeLog.DEBUG);
         }
 
         try
