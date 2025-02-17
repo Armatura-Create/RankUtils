@@ -228,7 +228,7 @@ public class DbService(IRanksApi ranksApi, IIksAdminApi iksAdminApi, CacheRank c
 
             const string selectQuery = @"
                 SELECT DISTINCT `steam_id`
-                FROM `iks_bans` WHERE `unbanned_by` == NULL";
+                FROM `iks_bans` WHERE `unbanned_by` IS NULL";
 
             var steamIds = await connection.QueryAsync<string>(selectQuery);
             foreach (var steamId in steamIds)
