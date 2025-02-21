@@ -34,9 +34,9 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
         Config = config;
         CacheRank = new CacheRank(this);
 
-        if (Config.CacheSaveBanRank > 7)
+        if (Config.CacheSaveBanRank > 30)
         {
-            Config.CacheSaveBanRank = 7;
+            Config.CacheSaveBanRank = 30;
         }
 
         IsDebug = Config.Debug;
@@ -87,36 +87,41 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
     {
         if (_api == null || string.IsNullOrEmpty(ban.SteamId)) return HookResult.Continue;
 
-        Utils.Log($"BAN EVENT: Admin: {ban.Admin?.Name}, Player: {ban.Name}, Reason: {ban.Reason}",
+        Utils.Log($"BAN EVENT: Admin: {ban.Admin?.Name}, Player: {ban.Name}, Reason: {ban.Reason}, Duration: {ban.Duration}",
             Utils.TypeLog.DEBUG);
+        
+        Utils.Log($"Duration save to cache {Config.CacheSaveBanRank * 24 * 60 * 60}", Utils.TypeLog.DEBUG);
 
-        Server.NextWorldUpdate(() =>
+        if (Config.CacheSaveBanRank > 0 && ban.Duration > Config.CacheSaveBanRank * 24 * 60 * 60)
         {
-            try
+            Server.NextWorldUpdate(() =>
             {
-                var isOnline = false;
-            
-                foreach (var player in Utilities.GetPlayers()
-                             .Where(player => player is { IsValid: true, IsBot: false, IsHLTV: false}))
+                try
                 {
-                    Utils.Log("Player online: " + player.AuthorizedSteamID?.SteamId64, Utils.TypeLog.DEBUG);
-                    if (player.AuthorizedSteamID?.SteamId64.ToString() != ban.SteamId) continue;
-                    Utils.Log($"Player {player.AuthorizedSteamID.SteamId64} online yet - reset by api", Utils.TypeLog.DEBUG);
-                    _api.SetPlayerExperience(player, 0);
-                    isOnline = true;
-                    break;
-                }
+                    var isOnline = false;
             
-                if (!isOnline)
-                {
-                    _dbService?.SetBanExp(ban.SteamId);
+                    foreach (var player in Utilities.GetPlayers()
+                                 .Where(player => player is { IsValid: true, IsBot: false, IsHLTV: false}))
+                    {
+                        Utils.Log("Player online: " + player.AuthorizedSteamID?.SteamId64, Utils.TypeLog.DEBUG);
+                        if (player.AuthorizedSteamID?.SteamId64.ToString() != ban.SteamId) continue;
+                        Utils.Log($"Player {player.AuthorizedSteamID.SteamId64} online yet - reset by api", Utils.TypeLog.DEBUG);
+                        _api.SetPlayerExperience(player, 0);
+                        isOnline = true;
+                        break;
+                    }
+            
+                    if (!isOnline)
+                    {
+                        _dbService?.SetBanExp(ban.SteamId);
+                    }
                 }
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e);
-            }
-        });
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                }
+            });
+        }
         
         return HookResult.Continue;
     }

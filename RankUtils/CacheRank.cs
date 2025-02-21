@@ -45,7 +45,7 @@ public class CacheRank
     
     public void AddToCache(CacheModel model)
     {
-        if (model.Steam == string.Empty) return;
+        if (model.Steam == string.Empty || _plugin.Config.CacheSaveBanRank == 0) return;
         var cache = LoadCache();
 
         cache.RemoveAll(x => DateTime.UtcNow - x.Timestamp > TimeSpan.FromDays(_plugin.Config.CacheSaveBanRank) || x.Steam == model.Steam);
