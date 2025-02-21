@@ -15,7 +15,7 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
 {
     public override string ModuleName => "RankUtils";
     public override string ModuleAuthor => "Armatura";
-    public override string ModuleVersion => "1.0.5";
+    public override string ModuleVersion => "1.0.6";
 
     public static bool IsDebug { get; set; }
 
