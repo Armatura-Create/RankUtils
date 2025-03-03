@@ -15,7 +15,7 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
 {
     public override string ModuleName => "RankUtils";
     public override string ModuleAuthor => "Armatura";
-    public override string ModuleVersion => "1.0.6";
+    public override string ModuleVersion => "1.0.6fix";
 
     public static bool IsDebug { get; set; }
 
@@ -92,7 +92,7 @@ public class RankUtils : AdminModule, IPluginConfig<PluginConfig>
         
         Utils.Log($"Duration save to cache {Config.CacheSaveBanRank * 24 * 60 * 60}", Utils.TypeLog.DEBUG);
 
-        if (Config.CacheSaveBanRank > 0 && ban.Duration > Config.CacheSaveBanRank * 24 * 60 * 60)
+        if (Config.CacheSaveBanRank > 0 && (ban.Duration > Config.CacheSaveBanRank * 24 * 60 * 60 || ban.Duration == 0))
         {
             Server.NextWorldUpdate(() =>
             {
